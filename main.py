@@ -7,6 +7,8 @@ from discord import app_commands
 import asyncio
 from datetime import timezone, timedelta
 from dotenv import load_dotenv
+import shutil
+
 
 load_dotenv()
 
@@ -135,7 +137,7 @@ async def my_event_handler(event):
     
     # Add reaction for approval
     await discord_message.add_reaction("✅")
-    
+    shutil.rmtree("downloads") 
     print(f"Telegram message from {sender_name} forwarded to Discord approval channel")
 
 @D_client.event
