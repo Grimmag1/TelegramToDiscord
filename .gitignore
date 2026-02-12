@@ -1,0 +1,8 @@
+.env
+anon.session
+*.session
+downloads/
+env/
+venv/
+__pycache__/
+*.pyc
