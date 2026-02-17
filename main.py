@@ -3,6 +3,7 @@ Telegram to Discord Bridge Bot
 Main entry point - initializes and runs both Telegram and Discord clients
 """
 from telethon import TelegramClient
+from telethon.sessions import StringSession
 import asyncio
 import config
 from telegram_handler import TelegramHandler
@@ -12,9 +13,10 @@ from discord_handler import MyClient, DiscordHandler
 async def main():
     """Initialize and start both Discord and Telegram clients"""
     
+    session_string = config.TELEGRAM_SESSION
     # Initialize Telegram client
     telegram_client = TelegramClient(
-        config.SESSION_NAME,
+        StringSession(session_string),
         config.API_ID,
         config.API_HASH
     )

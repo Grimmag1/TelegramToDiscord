@@ -12,6 +12,7 @@ SMENY_CHANNEL_ID = 1279120985156620421
 # Telegram API Credentials
 API_ID = int(os.getenv('API_ID'))
 API_HASH = str(os.getenv('API_HASH'))
+TELEGRAM_SESSION=str(os.getenv('SESSION'))
 
 # Discord Bot Token
 DISCORD_TOKEN = str(os.getenv('TOKEN'))
