@@ -27,10 +27,10 @@ class TelegramHandler:
             self.handle_new_message
         )
 
-        self.telegram_client.on(events.NewMessage(chats=[config.TESTING_ID])) (
+        self.telegram_client.on(events.NewMessage(chats=[config.KOFI_PROVOZ_ID])) (
             self.handle_direct_message
         )
-
+    
     async def handle_new_message(self, event):
         """
         Handle new messages from Telegram
@@ -44,6 +44,14 @@ class TelegramHandler:
             print("Approval channel not found! Please configure APPROVAL_CHANNEL_ID.")
             return
         
+        topic_id = None
+        if event.message.reply_to:
+            topic_id = event.message.reply_to.reply_to_top_id or event.message.reply_to.reply_to_msg_id
+
+        # Ignore messages not in the specific topic
+        if topic_id != config.KOFI_PROVOZ_MAIN_ID:
+            return
+
         # Handle grouped messages (albums)
         if event.message.grouped_id:
             await self._handle_grouped_message(event, approval_channel)
@@ -250,7 +258,7 @@ class TelegramHandler:
             topic_id = event.message.reply_to.reply_to_top_id or event.message.reply_to.reply_to_msg_id
 
         # Ignore messages not in the specific topic
-        if topic_id != config.TESTING_TOPIC_ID:
+        if topic_id != config.KOFI_PROVOZ_SMENY_ID:
             return
 
         sender = await event.get_sender()
