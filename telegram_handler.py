@@ -39,7 +39,7 @@ class TelegramHandler:
             event: Telethon NewMessage event
         """
         # Check existence of approval channel
-        approval_channel = self.discord_client.get_channel(config.APPROVAL_CHANNEL_ID)
+        approval_channel = self.discord_client.fetch_channel(config.APPROVAL_CHANNEL_ID)
         if not approval_channel:
             print("Approval channel not found! Please configure APPROVAL_CHANNEL_ID.")
             return
@@ -248,7 +248,7 @@ class TelegramHandler:
         Args:
             event: Telethon message event
         """
-        target_channel = self.discord_client.get_channel(config.SMENY_CHANNEL_ID)
+        target_channel = self.discord_client.fetch_channel(config.SMENY_CHANNEL_ID)
         if not target_channel:
             print("Target channel not found")
             return
