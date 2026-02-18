@@ -46,19 +46,18 @@ class TelegramHandler:
                 approval_channel_id = config.APPROVAL_CHANNEL_NEWS_ID
             case config.KOFI_PROVOZ_ID:
                 approval_channel_id = config.APPROVAL_CHANNEL_PROVOZ_ID
+                topic_id = None
+                if event.message.reply_to:
+                    topic_id = event.message.reply_to.reply_to_top_id or event.message.reply_to.reply_to_msg_id
+                # Ignore messages not in the specific topic
+                if topic_id != config.KOFI_PROVOZ_MAIN_ID:
+                    print("Message not in the main Provoz topic, ignoring.")
+                    return
         
         # Check existence of approval channel
         approval_channel = await self.discord_client.fetch_channel(approval_channel_id)
         if not approval_channel:
             print(f"Approval channel {approval_channel_id} not found! Please configure APPROVAL_CHANNEL_ID.")
-            return
-        
-        topic_id = None
-        if event.message.reply_to:
-            topic_id = event.message.reply_to.reply_to_top_id or event.message.reply_to.reply_to_msg_id
-
-        # Ignore messages not in the specific topic
-        if topic_id != config.KOFI_PROVOZ_MAIN_ID:
             return
 
         # Handle grouped messages (albums)
@@ -283,6 +282,7 @@ class TelegramHandler:
 
         # Ignore messages not in the specific topic
         if topic_id != config.KOFI_PROVOZ_SMENY_ID:
+            print("Message not in the Provoz Smeny topic, ignoring.")
             return
 
         sender = await event.get_sender()
