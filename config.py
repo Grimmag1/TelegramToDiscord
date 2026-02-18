@@ -5,6 +5,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Discord Channel IDs
+APPROVAL_CHANNEL_FLYBOYS_ID = int(os.getenv('APPROVAL_CHANNEL_FLYBOYS_ID'))
+APPROVAL_CHANNEL_NEWS_ID = int(os.getenv('APPROVAL_CHANNEL_NEWS_ID'))
+APPROVAL_CHANNEL_PROVOZ_ID = int(os.getenv('APPROVAL_CHANNEL_PROVOZ_ID'))
 APPROVAL_CHANNEL_ID = int(os.getenv('APPROVAL_CHANNEL_ID'))
 MAIN_CHANNEL_ID = int(os.getenv('MAIN_CHANNEL_ID'))
 SMENY_CHANNEL_ID = int(os.getenv('SMENY_CHANNEL_ID'))

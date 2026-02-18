@@ -38,10 +38,19 @@ class TelegramHandler:
         Args:
             event: Telethon NewMessage event
         """
+        chat_id = await event.chat_id
+        match chat_id:
+            case config.KOFI_FLYBOYS_ID:
+                approval_channel_id = config.APPROVAL_CHANNEL_FLYBOYS_ID
+            case config.KOFI_NEWS_ID:
+                approval_channel_id = config.APPROVAL_CHANNEL_NEWS_ID
+            case config.KOFI_PROVOZ_ID:
+                approval_channel_id = config.APPROVAL_CHANNEL_PROVOZ_ID
+        
         # Check existence of approval channel
-        approval_channel = await self.discord_client.fetch_channel(config.APPROVAL_CHANNEL_ID)
+        approval_channel = await self.discord_client.fetch_channel(approval_channel_id)
         if not approval_channel:
-            print("Approval channel not found! Please configure APPROVAL_CHANNEL_ID.")
+            print(f"Approval channel {approval_channel_id} not found! Please configure APPROVAL_CHANNEL_ID.")
             return
         
         topic_id = None
@@ -135,10 +144,25 @@ class TelegramHandler:
         Returns:
             discord.Embed: Formatted embed
         """
+        chat_id = event.chat_id
+        match chat_id:
+            case config.KOFI_FLYBOYS_ID:
+                title = "New Flyboys Message"
+                color = 0x0088cc
+            case config.KOFI_NEWS_ID:
+                title = "New News Message"
+                color = 0x8800cc
+            case config.KOFI_PROVOZ_ID:
+                title = "New Provoz Message"
+                color = 0xcc8800
+            case _:
+                title = "New Telegram Message"
+                color = 0x00cc88
+
         embed = discord.Embed(
-            title="New Telegram Message",
+            title=title,
             description=message_text,
-            color=0x0088cc
+            color=color
         )
         
         # Format timestamp
