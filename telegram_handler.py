@@ -107,9 +107,31 @@ class TelegramHandler:
         message_text = event.message.text or "[No text content]"
         sender = await event.get_sender()
         chat = await event.get_chat()
+
+        topic_id = None
+        if event.message.reply_to:
+            topic_id = event.message.reply_to.reply_to_top_id or event.message.reply_to.reply_to_msg_id
+        is_real_reply = (
+            event.message.reply_to and
+            event.message.reply_to.reply_to_top_id is not None and
+            event.message.reply_to.reply_to_msg_id != topic_id
+        )
+
+        if is_real_reply:
+            try:
+                original_msg = await self.telegram_client.get_messages(
+                    await event.get_chat(),
+                    ids=event.message.reply_to.reply_to_msg_id
+                )
+                if original_msg:
+                    original_text = original_msg.text or "[Media / No text]"
+                    original_sender = await original_msg.get_sender()
+                    original_sender_name = self._get_sender_name(original_sender)
+            except Exception as e:
+                print(f"Could not fetch original message: {e}")
         
         # Create embed
-        embed = self._create_embed(event, message_text, sender, chat)
+        embed = self._create_embed(event, message_text, sender, chat, original_text, original_sender_name)
         
         # Handle media
         discord_message = await self._send_with_media(
@@ -130,7 +152,7 @@ class TelegramHandler:
         sender_name = self._get_sender_name(sender)
         print(f"Telegram message from {sender_name} forwarded to Discord approval channel")
     
-    def _create_embed(self, event, message_text, sender, chat):
+    def _create_embed(self, event, message_text, sender, chat, original_text=None, original_sender_name=None):
         """
         Create Discord embed for the message
         
@@ -163,6 +185,14 @@ class TelegramHandler:
             description=message_text,
             color=color
         )
+
+        # If it's a reply, add the original message as a field above
+        if original_text and original_sender_name:
+            embed.add_field(
+                name=f"↩️ Replying to {original_sender_name}",
+                value=f">>> {original_text}",
+                inline=False
+            )
         
         # Format timestamp
         dt = event.message.date
