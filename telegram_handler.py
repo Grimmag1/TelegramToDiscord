@@ -38,7 +38,7 @@ class TelegramHandler:
         Args:
             event: Telethon NewMessage event
         """
-        chat_id = await event.chat_id
+        chat_id = event.chat_id
         match chat_id:
             case config.KOFI_FLYBOYS_ID:
                 approval_channel_id = config.APPROVAL_CHANNEL_FLYBOYS_ID
