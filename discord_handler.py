@@ -36,16 +36,23 @@ class DiscordHandler:
             return
         
         # Check if reaction is in the approval channel
-        if payload.channel_id != config.APPROVAL_CHANNEL_ID:
-            return
+        match payload.channel_id:
+            case config.APPROVAL_CHANNEL_FLYBOYS_ID:
+                approval_channel_id = config.APPROVAL_CHANNEL_FLYBOYS_ID
+            case config.APPROVAL_CHANNEL_NEWS_ID:
+                approval_channel_id = config.APPROVAL_CHANNEL_NEWS_ID
+            case config.APPROVAL_CHANNEL_PROVOZ_ID:
+                approval_channel_id = config.APPROVAL_CHANNEL_PROVOZ_ID
+            case _:
+                return
         
         # Check if reaction is a checkmark
         if str(payload.emoji) != "✅":
             return
         
-        await self._approve_message(payload)
+        await self._approve_message(payload, approval_channel_id)
     
-    async def _approve_message(self, payload):
+    async def _approve_message(self, payload, approval_channel_id):
         """
         Approve a message and post it to the main channel
         
@@ -53,7 +60,7 @@ class DiscordHandler:
             payload: Discord reaction payload
         """
         # Get the channels
-        approval_channel = self.client.get_channel(config.APPROVAL_CHANNEL_ID)
+        approval_channel = self.client.get_channel(approval_channel_id)
         main_channel = self.client.get_channel(config.MAIN_CHANNEL_ID)
         
         if not main_channel:
