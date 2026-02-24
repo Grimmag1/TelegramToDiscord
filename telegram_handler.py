@@ -117,6 +117,9 @@ class TelegramHandler:
             event.message.reply_to.reply_to_msg_id != topic_id
         )
 
+        original_text = None
+        original_sender_name = None
+
         if is_real_reply:
             try:
                 original_msg = await self.telegram_client.get_messages(
@@ -129,7 +132,7 @@ class TelegramHandler:
                     original_sender_name = self._get_sender_name(original_sender)
             except Exception as e:
                 print(f"Could not fetch original message: {e}")
-        
+
         # Create embed
         embed = self._create_embed(event, message_text, sender, chat, original_text, original_sender_name)
         
