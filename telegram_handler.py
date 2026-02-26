@@ -20,11 +20,6 @@ class TelegramHandler:
         """
         self.telegram_client = telegram_client
         self.discord_client = discord_client
-        
-        # Register event handlers
-        self.telegram_client.on(events.NewMessage(chats=config.MONITORED_CHATS))(
-            self.handle_new_message
-        )
 
         self.telegram_client.on(events.NewMessage(chats=[config.KOFI_PROVOZ_ID])) (
             self.handle_direct_message
