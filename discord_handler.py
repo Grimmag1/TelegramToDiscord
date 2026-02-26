@@ -25,6 +25,7 @@ class DiscordHandler:
             'ok': 'Přihlásit se'
         }
         self.shifts = pd.DataFrame()
+        self.paginated_messages = {}  # message_id -> {trucks, index, czech_day, day_shifts}
 
         self.location_choices = [
             app_commands.Choice(name="Batch Brew", value="Batch Brew"),
@@ -49,6 +50,10 @@ class DiscordHandler:
         ]
         # Register event handlers
         self.client.event(self.on_ready)
+        self.client.event(self.on_raw_reaction_add)
+
+
+
 
         # Register slash commands
         @self.client.tree.command(name="scrape", description="Scrape data from IS")
@@ -88,25 +93,64 @@ class DiscordHandler:
                 await interaction.response.send_message(f"No shifts found for {location.value} today.")
                 return
 
-            def format_group(df_group):
-                if df_group.empty:
-                    return "-"
-                return "\n".join(f"{row['name']} ({row['time']})" for _, row in df_group.iterrows())
+            await interaction.response.send_message(embed=self._create_embed(today_shifts, location.value, czech_day))
 
-            dop_barista = today_shifts[today_shifts['position_priority'] == 1]
-            dop_prisluha = today_shifts[today_shifts['position_priority'] == 2]
-            odp_barista  = today_shifts[today_shifts['position_priority'] == 3]
-            odp_prisluha = today_shifts[today_shifts['position_priority'] == 4]
+        @self.client.tree.command(name="today-all", description="Show shifts for all trucks today")
+        async def today_all(interaction: discord.Interaction):
+            if self.shifts.empty:
+                await interaction.response.send_message("No shift data available. Please run /scrape first.")
+                return
 
-            embed = discord.Embed(title=f"{location.value} — {czech_day}", color=0xcc8800)
-            embed.add_field(name="☀️ **Dopoledne — Barista**", value=format_group(dop_barista), inline=True)
-            embed.add_field(name="**Příluha**", value=format_group(dop_prisluha), inline=True)
-            embed.add_field(name="\u200b", value="\u200b", inline=True)  # spacer to end row
-            embed.add_field(name="🌙 **Odpoledne — Barista**", value=format_group(odp_barista), inline=True)
-            embed.add_field(name="**Příluha**", value=format_group(odp_prisluha), inline=True)
+            today_english = datetime.now().strftime('%A')
+            czech_day = None
+            for czech, english in config.CZECH_TO_ENGLISH_DAYS.items():
+                if english == today_english:
+                    czech_day = czech
+                    break
+            if czech_day is None:
+                await interaction.response.send_message("Could not determine today's day.")
+                return
+
+            day_shifts = self.shifts[self.shifts['day'] == czech_day]
+            if day_shifts.empty:
+                await interaction.response.send_message("No shifts found for today.")
+                return
+
+            trucks = list(day_shifts['truck'].unique())
+            first_shifts = day_shifts[day_shifts['truck'] == trucks[0]]
+            embed = self._create_embed(first_shifts, trucks[0], czech_day)
+            embed.set_footer(text=f"{trucks[0]}  •  1 / {len(trucks)}")
 
             await interaction.response.send_message(embed=embed)
-        
+            message = await interaction.original_response()
+            await message.add_reaction("⬅️")
+            await message.add_reaction("➡️")
+
+            self.paginated_messages[message.id] = {
+                "trucks": trucks,
+                "index": 0,
+                "czech_day": czech_day,
+                "day_shifts": day_shifts,
+            }
+
+    def _create_embed(self, today_shifts, location_name, day):
+        def format_group(df_group):
+            if df_group.empty:
+                return "-"
+            return "\n".join(f"{row['name']} ({row['time']})" for _, row in df_group.iterrows())
+        dop_barista = today_shifts[today_shifts['position_priority'] == 1]
+        dop_prisluha = today_shifts[today_shifts['position_priority'] == 2]
+        odp_barista  = today_shifts[today_shifts['position_priority'] == 3]
+        odp_prisluha = today_shifts[today_shifts['position_priority'] == 4]
+
+        embed = discord.Embed(title=f"{location_name} — {day}", color=0x88cc00)
+        embed.add_field(name="☀️ **Dopoledne — Barista**", value=format_group(dop_barista), inline=True)
+        embed.add_field(name="**Příluha**", value=format_group(dop_prisluha), inline=True)
+        embed.add_field(name="\u200b", value="\u200b", inline=True)  # spacer to end row
+        embed.add_field(name="🌙 **Odpoledne — Barista**", value=format_group(odp_barista), inline=True)
+        embed.add_field(name="**Příluha**", value=format_group(odp_prisluha), inline=True)
+        return embed
+
     def _do_scrape(self):
         """Blocking scrape — runs in a thread via asyncio.to_thread"""
         login_url = "https://is.kofikofi.cz/"
@@ -199,10 +243,48 @@ class DiscordHandler:
         except:
             return 9999  # Put invalid times at the end
 
+    async def on_raw_reaction_add(self, payload):
+        if payload.user_id == self.client.user.id:
+            return
+        if payload.message_id not in self.paginated_messages:
+            return
+        emoji = str(payload.emoji)
+        if emoji not in ("⬅️", "➡️"):
+            return
+
+        state = self.paginated_messages[payload.message_id]
+        trucks = state["trucks"]
+        index = state["index"]
+
+        if emoji == "➡️":
+            index = (index + 1) % len(trucks)
+        else:
+            index = (index - 1) % len(trucks)
+        state["index"] = index
+
+        truck = trucks[index]
+        truck_shifts = state["day_shifts"][state["day_shifts"]["truck"] == truck]
+        embed = self._create_embed(truck_shifts, truck, state["czech_day"])
+        embed.set_footer(text=f"{truck}  •  {index + 1} / {len(trucks)}")
+
+        channel = self.client.get_channel(payload.channel_id)
+        message = await channel.fetch_message(payload.message_id)
+        await message.edit(embed=embed)
+
+        # Remove the user's reaction so they can navigate again
+        user = await self.client.fetch_user(payload.user_id)
+        await message.remove_reaction(payload.emoji, user)
+
     async def on_ready(self):
         """Called when the Discord bot is ready"""
         print(f'Logged in as {self.client.user}')
         print('Discord bot is ready!')
+        results = await asyncio.to_thread(self._do_scrape)
+        if results is not None and not results.empty:
+            self.shifts = results
+            print(f"Initial scrape completed. Got {len(results)} shift records.")
+        else:
+            print("Initial scrape failed or returned no data.")
 
 
 class MyClient(discord.Client):
