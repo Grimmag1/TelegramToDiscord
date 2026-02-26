@@ -1,5 +1,5 @@
 import discord
-from discord import app_commands, datetime
+from discord import app_commands
 import config
 import requests
 from bs4 import BeautifulSoup
@@ -25,26 +25,8 @@ class DiscordHandler:
             'ok': 'Přihlásit se'
         }
         self.shifts = pd.DataFrame()
-        # Register event handlers
-        self.client.event(self.on_ready)
 
-        # Register slash commands
-        @self.client.tree.command(name="scrape", description="Scrape data from IS")
-        async def scrape(interaction: discord.Interaction):
-            await interaction.response.defer()
-            results = await asyncio.to_thread(self._do_scrape)
-            if results is None:
-                await interaction.followup.send("Login failed")
-            elif results.empty:
-                await interaction.followup.send("Failed to retrieve shifts")
-            else:
-                self.shifts = results
-                await interaction.followup.send(f"Scraped {len(results)} shifts")
-
-        @self.client.tree.command(name="today", description="Show shifts for today")
-        @app_commands.describe(location="Which truck to show")
-        @app_commands.choices(location=[
-            #app_commands.Choice(name="All", value="All"),
+        self.location_choices = [
             app_commands.Choice(name="Batch Brew", value="Batch Brew"),
             app_commands.Choice(name="Česká", value="Česká"),
             app_commands.Choice(name="Dětská nemocnice", value="Dětská nemocnice"),
@@ -64,7 +46,26 @@ class DiscordHandler:
             app_commands.Choice(name="Šelepka", value="Šelepka"),
             app_commands.Choice(name="Šilingrovo náměstí", value="Šilingrovo náměstí"),
             app_commands.Choice(name="Technopark", value="Technopark")
-        ])
+        ]
+        # Register event handlers
+        self.client.event(self.on_ready)
+
+        # Register slash commands
+        @self.client.tree.command(name="scrape", description="Scrape data from IS")
+        async def scrape(interaction: discord.Interaction):
+            await interaction.response.defer()
+            results = await asyncio.to_thread(self._do_scrape)
+            if results is None:
+                await interaction.followup.send("Login failed")
+            elif results.empty:
+                await interaction.followup.send("Failed to retrieve shifts")
+            else:
+                self.shifts = results
+                await interaction.followup.send(f"Scraped {len(results)} shifts")
+
+        @self.client.tree.command(name="today", description="Show shifts for today")
+        @app_commands.describe(location="Which truck to show")
+        @app_commands.choices(location=self.location_choices)
         async def today(interaction: discord.Interaction, location: app_commands.Choice[str]):
             if self.shifts.empty:
                 await interaction.response.send_message("No shift data available. Please run /scrape first.")
@@ -87,7 +88,24 @@ class DiscordHandler:
                 await interaction.response.send_message(f"No shifts found for {location.value} today.")
                 return
 
-            await interaction.response.send_message(f"Shifts for {location.value} on {czech_day}:\n" + "\n".join(f"{row['time']} - {row['name']} ({row['position']})" for _, row in today_shifts.iterrows()))
+            def format_group(df_group):
+                if df_group.empty:
+                    return "-"
+                return "\n".join(f"{row['name']} ({row['time']})" for _, row in df_group.iterrows())
+
+            dop_barista = today_shifts[today_shifts['position_priority'] == 1]
+            dop_prisluha = today_shifts[today_shifts['position_priority'] == 2]
+            odp_barista  = today_shifts[today_shifts['position_priority'] == 3]
+            odp_prisluha = today_shifts[today_shifts['position_priority'] == 4]
+
+            embed = discord.Embed(title=f"{location.value} — {czech_day}", color=0xcc8800)
+            embed.add_field(name="☀️ **Dopoledne — Barista**", value=format_group(dop_barista), inline=True)
+            embed.add_field(name="**Příluha**", value=format_group(dop_prisluha), inline=True)
+            embed.add_field(name="\u200b", value="\u200b", inline=True)  # spacer to end row
+            embed.add_field(name="🌙 **Odpoledne — Barista**", value=format_group(odp_barista), inline=True)
+            embed.add_field(name="**Příluha**", value=format_group(odp_prisluha), inline=True)
+
+            await interaction.response.send_message(embed=embed)
         
     def _do_scrape(self):
         """Blocking scrape — runs in a thread via asyncio.to_thread"""
