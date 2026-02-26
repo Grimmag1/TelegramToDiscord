@@ -40,6 +40,10 @@ MONITORED_CHATS = [
     KOFI_PROVOZ_ID,
 ]
 
+# Login info for IS
+LOGIN = os.getenv('LOGIN')
+PASSWORD = os.getenv('PASSWORD')
+
 # File paths
 DOWNLOADS_DIR = "downloads"
 SESSION_NAME = "anon"
