@@ -16,7 +16,6 @@ class DiscordHandler:
         
         # Register event handlers
         self.client.event(self.on_ready)
-        self.client.event(self.on_raw_reaction_add)
     
     async def on_ready(self):
         """Called when the Discord bot is ready"""
