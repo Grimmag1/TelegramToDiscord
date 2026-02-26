@@ -10,6 +10,7 @@ dotenv==0.9.9
 frozenlist==1.8.0
 idna==3.11
 multidict==6.7.1
+pandas==2.2.3
 propcache==0.4.1
 pyaes==1.6.1
 pyasn1==0.6.2

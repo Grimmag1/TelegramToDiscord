@@ -44,6 +44,18 @@ MONITORED_CHATS = [
 LOGIN = os.getenv('LOGIN')
 PASSWORD = os.getenv('PASSWORD')
 
+DAY_ORDER = ['Pondělí', 'Úterý', 'Středa', 'Čtvrtek', 'Pátek', 'Sobota', 'Neděle']
+CZECH_TO_ENGLISH_DAYS = {
+    'Pondělí': 'Monday',
+    'Úterý': 'Tuesday', 
+    'Středa': 'Wednesday',
+    'Čtvrtek': 'Thursday',
+    'Pátek': 'Friday',
+    'Sobota': 'Saturday',
+    'Neděle': 'Sunday'
+}
+
+
 # File paths
 DOWNLOADS_DIR = "downloads"
 SESSION_NAME = "anon"
