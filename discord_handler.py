@@ -283,9 +283,9 @@ class DiscordHandler:
             return 1
         elif 'prisluha' in pos_lower and ('dopoledne' in pos_lower or 'vikend' in pos_lower and 'odpoledne' not in pos_lower):
             return 2
-        elif 'barista' in pos_lower and 'odpoledne' in pos_lower:
+        elif 'barista' in pos_lower:
             return 3
-        elif 'prisluha' in pos_lower and 'odpoledne' in pos_lower:
+        elif 'prisluha' in pos_lower:
             return 4
         else:
             return 5
