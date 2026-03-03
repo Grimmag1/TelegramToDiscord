@@ -45,6 +45,12 @@ LOGIN = os.getenv('LOGIN')
 PASSWORD = os.getenv('PASSWORD')
 
 DAY_ORDER = ['Pondělí', 'Úterý', 'Středa', 'Čtvrtek', 'Pátek', 'Sobota', 'Neděle']
+TRUCK_ORDER = [
+    'Batch Brew', 'Česká', 'Dětská nemocnice', 'Fakultní nemocnice Brno', 'Grand',
+    'Hlavní nádraží', 'Husitská', 'Janáček', 'Kampus', 'Kampus 2',
+    'Maliňák', 'Moravák', 'MUNI', 'Obilňák', 'Svatá Anna',
+    'Svoboďák', 'Šelepka', 'Šilingrovo náměstí', 'Technopark',
+]
 CZECH_TO_ENGLISH_DAYS = {
     'Pondělí': 'Monday',
     'Úterý': 'Tuesday', 

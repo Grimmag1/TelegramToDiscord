@@ -48,6 +48,15 @@ class DiscordHandler:
             app_commands.Choice(name="Šilingrovo náměstí", value="Šilingrovo náměstí"),
             app_commands.Choice(name="Technopark", value="Technopark")
         ]
+        self.day_choices = [
+            app_commands.Choice(name="Pondělí", value="Pondělí"),
+            app_commands.Choice(name="Úterý", value="Úterý"),
+            app_commands.Choice(name="Středa", value="Středa"),
+            app_commands.Choice(name="Čtvrtek", value="Čtvrtek"),
+            app_commands.Choice(name="Pátek", value="Pátek"),
+            app_commands.Choice(name="Sobota", value="Sobota"),
+            app_commands.Choice(name="Neděle", value="Neděle")
+        ]
         # Register event handlers
         self.client.event(self.on_ready)
         self.client.event(self.on_raw_reaction_add)
@@ -127,11 +136,58 @@ class DiscordHandler:
             await message.add_reaction("➡️")
 
             self.paginated_messages[message.id] = {
+                "mode": "trucks",
                 "trucks": trucks,
                 "index": 0,
                 "czech_day": czech_day,
                 "day_shifts": day_shifts,
             }
+
+        @self.client.tree.command(name="week", description="Show shifts for a specific truck for the whole week")
+        @app_commands.describe(location="Which truck to show")
+        @app_commands.choices(location=self.location_choices)
+        async def week(interaction: discord.Interaction, location: app_commands.Choice[str]):
+            if self.shifts.empty:
+                await interaction.response.send_message("No shift data available. Please run /scrape first.")
+                return
+
+            truck_shifts = self.shifts[self.shifts['truck'] == location.value]
+            if truck_shifts.empty:
+                await interaction.response.send_message(f"No shifts found for {location.value}.")
+                return
+
+            days = [d for d in config.DAY_ORDER if d in truck_shifts['day'].values]
+
+            first_day_shifts = truck_shifts[truck_shifts['day'] == days[0]]
+            embed = self._create_embed(first_day_shifts, location.value, days[0])
+            embed.set_footer(text=f"{days[0]}  •  1 / {len(days)}")
+
+            await interaction.response.send_message(embed=embed)
+            message = await interaction.original_response()
+            await message.add_reaction("⬅️")
+            await message.add_reaction("➡️")
+
+            self.paginated_messages[message.id] = {
+                "mode": "days",
+                "days": days,
+                "index": 0,
+                "truck": location.value,
+                "truck_shifts": truck_shifts,
+            }
+
+        @self.client.tree.command(name="day", description="Show shifts for a specific truck for a given day")
+        @app_commands.describe(day="What day to show", location="Which truck to show")
+        @app_commands.choices(day=self.day_choices, location=self.location_choices)
+        async def day(interaction: discord.Interaction, day: app_commands.Choice[str], location: app_commands.Choice[str]):
+            if self.shifts.empty:
+                await interaction.response.send_message("No shift data available. Please run /scrape first.")
+                return
+            day_truck_shifts = self.shifts[(self.shifts['truck'] == location.value) & (self.shifts['day'] == day.value)]
+            if day_truck_shifts.empty:
+                await interaction.response.send_message(f"No shifts found for {location.value} on {day.value}.")
+                return
+            embed = self._create_embed(day_truck_shifts, location.value, day.value)
+            await interaction.response.send_message(embed=embed)
 
     def _create_embed(self, today_shifts, location_name, day):
         def format_group(df_group):
@@ -208,11 +264,12 @@ class DiscordHandler:
         
         df = pd.DataFrame(results)
         df['day_categorical'] = pd.Categorical(df['day'], categories=config.DAY_ORDER, ordered=True)
+        df['truck_categorical'] = pd.Categorical(df['truck'], categories=config.TRUCK_ORDER, ordered=True)
         df['position_priority'] = df['position'].apply(self._get_position_priority)
         df['start_time_minutes'] = df['time'].apply(self._get_start_time)
-        
+
         df = df.sort_values(
-            ['day_categorical', 'truck', 'position_priority', 'start_time_minutes']
+            ['day_categorical', 'truck_categorical', 'position_priority', 'start_time_minutes']
         ).reset_index(drop=True)
 
         return df
@@ -253,19 +310,26 @@ class DiscordHandler:
             return
 
         state = self.paginated_messages[payload.message_id]
-        trucks = state["trucks"]
+        mode = state["mode"]
+        items = state["trucks"] if mode == "trucks" else state["days"]
         index = state["index"]
 
         if emoji == "➡️":
-            index = (index + 1) % len(trucks)
+            index = (index + 1) % len(items)
         else:
-            index = (index - 1) % len(trucks)
+            index = (index - 1) % len(items)
         state["index"] = index
 
-        truck = trucks[index]
-        truck_shifts = state["day_shifts"][state["day_shifts"]["truck"] == truck]
-        embed = self._create_embed(truck_shifts, truck, state["czech_day"])
-        embed.set_footer(text=f"{truck}  •  {index + 1} / {len(trucks)}")
+        if mode == "trucks":
+            truck = items[index]
+            shifts = state["day_shifts"][state["day_shifts"]["truck"] == truck]
+            embed = self._create_embed(shifts, truck, state["czech_day"])
+            embed.set_footer(text=f"{truck}  •  {index + 1} / {len(items)}")
+        else:
+            day = items[index]
+            shifts = state["truck_shifts"][state["truck_shifts"]["day"] == day]
+            embed = self._create_embed(shifts, state["truck"], day)
+            embed.set_footer(text=f"{day}  •  {index + 1} / {len(items)}")
 
         channel = self.client.get_channel(payload.channel_id)
         message = await channel.fetch_message(payload.message_id)
