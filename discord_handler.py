@@ -281,7 +281,7 @@ class DiscordHandler:
         """Assign priority to positions for sorting"""
         pos_lower = position.lower()
         
-        if 'barista' in pos_lower and ('dopoledne' in pos_lower or 'vikend' in pos_lower and 'odpoledne' not in pos_lower):
+        if 'barista' in pos_lower and ('dopoledne' in pos_lower or 'vikend' in pos_lower and 'odpoledne' not in pos_lower and 'sanitace' not in pos_lower):
             return 1
         elif 'prisluha' in pos_lower and ('dopoledne' in pos_lower or 'vikend' in pos_lower and 'odpoledne' not in pos_lower):
             return 2
