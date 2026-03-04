@@ -201,10 +201,12 @@ class DiscordHandler:
 
         embed = discord.Embed(title=f"{location_name} — {day}", color=0x88cc00)
         embed.add_field(name="☀️ **Dopoledne — Barista**", value=format_group(dop_barista), inline=True)
+        embed.add_field(name="\u200b", value="\u200b", inline=True) 
         embed.add_field(name="**Příluha**", value=format_group(dop_prisluha), inline=True)
-        embed.add_field(name="\u200b", value="\u200b", inline=True)  # spacer to end row
         embed.add_field(name="🌙 **Odpoledne — Barista**", value=format_group(odp_barista), inline=True)
+        embed.add_field(name="\u200b", value="\u200b", inline=True)
         embed.add_field(name="**Příluha**", value=format_group(odp_prisluha), inline=True)
+        embed.add_field(name="\u200b", value="\u200b", inline=True)
         return embed
 
     def _do_scrape(self):
