@@ -404,6 +404,13 @@ class DiscordHandler:
                 value=field.value,
                 inline=field.inline
             )
+
+        # Extract Chat and Time from the approval footer and add as fields
+        if original_embed.footer and original_embed.footer.text:
+            parts = original_embed.footer.text.split(" | ")
+            if len(parts) == 3:
+                approved_embed.add_field(name="Chat", value=parts[1], inline=True)
+                approved_embed.add_field(name="Time", value=parts[2], inline=True)
         
         # Copy author if exists
         if original_embed.author:

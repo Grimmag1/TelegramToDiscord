@@ -194,12 +194,8 @@ class TelegramHandler:
         dt_local = dt.astimezone(gmt_offset)
         formatted_time = dt_local.strftime("%d.%m.%Y %H:%M")
         
-        # Add fields
         chat_name = self._get_chat_name(chat)
-        
-        embed.add_field(name="Chat", value=chat_name, inline=True)
-        embed.add_field(name="Time", value=formatted_time, inline=True)
-        embed.set_footer(text="React with ✅ to approve and post to main channel")
+        embed.set_footer(text=f"React with ✅ to approve | {chat_name} | {formatted_time}")
         
         return embed
 
