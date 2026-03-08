@@ -108,8 +108,11 @@ class TelegramHandler:
             topic_id = event.message.reply_to.reply_to_top_id or event.message.reply_to.reply_to_msg_id
         is_real_reply = (
             event.message.reply_to and
-            event.message.reply_to.reply_to_top_id is not None and
-            event.message.reply_to.reply_to_msg_id != topic_id
+            event.message.reply_to.reply_to_msg_id is not None and
+            (
+                event.message.reply_to.reply_to_top_id is None or  # regular chat reply
+                event.message.reply_to.reply_to_msg_id != topic_id  # topic reply to a message (not the topic root)
+            )
         )
 
         original_text = None
