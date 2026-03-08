@@ -305,41 +305,135 @@ class DiscordHandler:
     async def on_raw_reaction_add(self, payload):
         if payload.user_id == self.client.user.id:
             return
-        if payload.message_id not in self.paginated_messages:
-            return
+        
         emoji = str(payload.emoji)
-        if emoji not in ("⬅️", "➡️"):
+
+        if emoji in ("⬅️", "➡️"):
+            if payload.message_id not in self.paginated_messages:
+                return
+            state = self.paginated_messages[payload.message_id]
+            mode = state["mode"]
+            items = state["trucks"] if mode == "trucks" else state["days"]
+            index = state["index"]
+
+            if emoji == "➡️":
+                index = (index + 1) % len(items)
+            else:
+                index = (index - 1) % len(items)
+            state["index"] = index
+
+            if mode == "trucks":
+                truck = items[index]
+                shifts = state["day_shifts"][state["day_shifts"]["truck"] == truck]
+                embed = self._create_embed(shifts, truck, state["czech_day"])
+                embed.set_footer(text=f"{truck}  •  {index + 1} / {len(items)}")
+            else:
+                day = items[index]
+                shifts = state["truck_shifts"][state["truck_shifts"]["day"] == day]
+                embed = self._create_embed(shifts, state["truck"], day)
+                embed.set_footer(text=f"{day}  •  {index + 1} / {len(items)}")
+
+            channel = self.client.get_channel(payload.channel_id)
+            message = await channel.fetch_message(payload.message_id)
+            await message.edit(embed=embed)
+
+            # Remove the user's reaction so they can navigate again
+            user = await self.client.fetch_user(payload.user_id)
+            await message.remove_reaction(payload.emoji, user)
+        
+        else: # ✅
+            await self._approve_message(payload, payload.channel_id)
+
+    async def _approve_message(self, payload, approval_channel_id):
+        """
+        Approve a message and post it to the main channel
+        
+        Args:
+            payload: Discord reaction payload
+        """
+        # Get the channels
+        approval_channel = self.client.get_channel(approval_channel_id)
+        main_channel = self.client.get_channel(config.MAIN_CHANNEL_ID)
+        
+        if not main_channel:
+            print("Main channel not found! Please configure MAIN_CHANNEL_ID.")
             return
+        
+        # Get the message
+        message = await approval_channel.fetch_message(payload.message_id)
+        
+        # Check if message has an embed (our approval message)
+        if not message.embeds:
+            return
+        
+        # Get the original embed
+        original_embed = message.embeds[0]
+        
+        # Create a new embed for the main channel (without the approval footer)
+        approved_embed = self._create_approved_embed(original_embed)
+        
+        # Send to main channel with attachments
+        await main_channel.send(
+            embed=approved_embed,
+            files=[await attachment.to_file() for attachment in message.attachments]
+        )
+        
+        # Update the approval message
+        await self._mark_as_approved(message, original_embed, payload.user_id)
 
-        state = self.paginated_messages[payload.message_id]
-        mode = state["mode"]
-        items = state["trucks"] if mode == "trucks" else state["days"]
-        index = state["index"]
+    def _create_approved_embed(self, original_embed):
+        """
+        Create an embed for the main channel from the approval embed
+        
+        Args:
+            original_embed: Original Discord embed from approval channel
+            
+        Returns:
+            discord.Embed: New embed without approval footer
+        """
+        approved_embed = discord.Embed(
+            title=original_embed.title,
+            description=original_embed.description,
+            color=original_embed.color
+        )
+        
+        # Copy all fields
+        for field in original_embed.fields:
+            approved_embed.add_field(
+                name=field.name,
+                value=field.value,
+                inline=field.inline
+            )
+        
+        # Copy author if exists
+        if original_embed.author:
+            approved_embed.set_author(
+                name=original_embed.author.name,
+                icon_url=original_embed.author.icon_url
+            )
+        
+        return approved_embed
 
-        if emoji == "➡️":
-            index = (index + 1) % len(items)
-        else:
-            index = (index - 1) % len(items)
-        state["index"] = index
-
-        if mode == "trucks":
-            truck = items[index]
-            shifts = state["day_shifts"][state["day_shifts"]["truck"] == truck]
-            embed = self._create_embed(shifts, truck, state["czech_day"])
-            embed.set_footer(text=f"{truck}  •  {index + 1} / {len(items)}")
-        else:
-            day = items[index]
-            shifts = state["truck_shifts"][state["truck_shifts"]["day"] == day]
-            embed = self._create_embed(shifts, state["truck"], day)
-            embed.set_footer(text=f"{day}  •  {index + 1} / {len(items)}")
-
-        channel = self.client.get_channel(payload.channel_id)
-        message = await channel.fetch_message(payload.message_id)
-        await message.edit(embed=embed)
-
-        # Remove the user's reaction so they can navigate again
-        user = await self.client.fetch_user(payload.user_id)
-        await message.remove_reaction(payload.emoji, user)
+    async def _mark_as_approved(self, message, original_embed, approver_id):
+        """
+        Update the approval message to show it was approved
+        
+        Args:
+            message: Discord message object
+            original_embed: Original embed
+            approver_id: ID of the user who approved
+        """
+        # Get the approver
+        approver = await self.client.fetch_user(approver_id)
+        
+        # Update the footer
+        original_embed.set_footer(
+            text=f"✅ Approved by {approver.display_name} and posted to main channel"
+        )
+        await message.edit(embed=original_embed)
+        
+        # Remove all reactions to prevent double-approval
+        await message.clear_reactions()
 
     async def on_ready(self):
         """Called when the Discord bot is ready"""
