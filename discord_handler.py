@@ -25,7 +25,8 @@ class DiscordHandler:
             'ok': 'Přihlásit se'
         }
         self.shifts = pd.DataFrame()
-        self.paginated_messages = {}  # message_id -> {trucks, index, czech_day, day_shifts}
+        self.flyboys = pd.DataFrame()
+        self.paginated_messages = {}  # message_id -> {mode, index, ...}
 
         self.location_choices = [
             app_commands.Choice(name="Batch Brew", value="Batch Brew"),
@@ -68,14 +69,13 @@ class DiscordHandler:
         @self.client.tree.command(name="scrape", description="Scrape data from IS")
         async def scrape(interaction: discord.Interaction):
             await interaction.response.defer()
-            results = await asyncio.to_thread(self._do_scrape)
-            if results is None:
+            shifts, flyboys = await asyncio.to_thread(self._do_scrape)
+            if shifts is None:
                 await interaction.followup.send("Login failed")
-            elif results.empty:
-                await interaction.followup.send("Failed to retrieve shifts")
             else:
-                self.shifts = results
-                await interaction.followup.send(f"Scraped {len(results)} shifts")
+                self.shifts = shifts
+                self.flyboys = flyboys
+                await interaction.followup.send(f"Scraped {len(shifts)} shifts and {len(flyboys)} flyboys records")
 
         @self.client.tree.command(name="today", description="Show shifts for today")
         @app_commands.describe(location="Which truck to show")
@@ -189,6 +189,71 @@ class DiscordHandler:
             embed = self._create_embed(day_truck_shifts, location.value, day.value)
             await interaction.response.send_message(embed=embed)
 
+        @self.client.tree.command(name="flyboy_sanitace", description="Show list of flyboys, that have sanitace this week")
+        async def flyboy_sanitace(interaction: discord.Interaction):
+            if self.flyboys.empty:
+                await interaction.response.send_message("No flyboys data. Please run /scrape first.")
+                return
+
+            friday_flyboys = self.flyboys[self.flyboys['day'] == 'Pátek']
+            if friday_flyboys.empty:
+                await interaction.response.send_message("No flyboys shifts found for Friday.")
+                return
+
+            last_shift_type = friday_flyboys['shift_type'].iloc[-1]
+            evening = friday_flyboys[friday_flyboys['shift_type'] == last_shift_type]
+            names = evening['name'].unique().tolist()
+            message = "Nezapomente na sanitaci!\n" + "\n".join(names)
+            await interaction.response.send_message(message)
+
+        @self.client.tree.command(name="flyboys-today", description="Show flyboys shifts for today")
+        async def flyboys_today(interaction: discord.Interaction):
+            if self.flyboys.empty:
+                await interaction.response.send_message("No flyboys data. Please run /scrape first.")
+                return
+
+            today_english = datetime.now().strftime('%A')
+            czech_day = None
+            for czech, english in config.CZECH_TO_ENGLISH_DAYS.items():
+                if english == today_english:
+                    czech_day = czech
+                    break
+            if czech_day is None:
+                await interaction.response.send_message("Could not determine today's day.")
+                return
+
+            day_flyboys = self.flyboys[self.flyboys['day'] == czech_day]
+            if day_flyboys.empty:
+                await interaction.response.send_message(f"No flyboys shifts for today.")
+                return
+
+            await interaction.response.send_message(embed=self._create_flyboys_embed(day_flyboys, czech_day))
+
+        @self.client.tree.command(name="flyboys-week", description="Show flyboys shifts for the whole week")
+        async def flyboys_week(interaction: discord.Interaction):
+            if self.flyboys.empty:
+                await interaction.response.send_message("No flyboys data. Please run /scrape first.")
+                return
+
+            days = [d for d in config.DAY_ORDER if d in self.flyboys['day'].values]
+
+            first_day = days[0]
+            first_shifts = self.flyboys[self.flyboys['day'] == first_day]
+            embed = self._create_flyboys_embed(first_shifts, first_day)
+            embed.set_footer(text=f"{first_day}  •  1 / {len(days)}")
+
+            await interaction.response.send_message(embed=embed)
+            message = await interaction.original_response()
+            await message.add_reaction("⬅️")
+            await message.add_reaction("➡️")
+
+            self.paginated_messages[message.id] = {
+                "mode": "flyboys_days",
+                "days": days,
+                "index": 0,
+                "flyboys_shifts": self.flyboys,
+            }
+
     def _create_embed(self, today_shifts, location_name, day):
         def format_group(df_group):
             if df_group.empty:
@@ -209,20 +274,39 @@ class DiscordHandler:
         embed.add_field(name="\u200b", value="\u200b", inline=True)
         return embed
 
+    def _create_flyboys_embed(self, day_flyboys, day):
+        embed = discord.Embed(title=f"Flyboys — {day}", color=0xcc4400)
+        shift_types = day_flyboys['shift_type'].unique()
+        for shift_type in shift_types:
+            type_group = day_flyboys[day_flyboys['shift_type'] == shift_type]
+            positions = type_group['position'].unique()
+            for position in positions:
+                pos_group = type_group[type_group['position'] == position]
+                lines = [f"{row['name']} ({row['time']})" for _, row in pos_group.iterrows()]
+                embed.add_field(
+                    name=f"{shift_type} — {position}",
+                    value="\n".join(lines) if lines else "-",
+                    inline=True
+                )
+        return embed
+
     def _do_scrape(self):
-        """Blocking scrape — runs in a thread via asyncio.to_thread"""
-        login_url = "https://is.kofikofi.cz/"
-        shift_url = "https://is.kofikofi.cz/index.php?what=read2&truck=0"
+        """Login once and scrape both pages. Returns (shifts_df, flyboys_df) or (None, None) on login failure."""
         session = requests.Session()
-        response = session.post(login_url, data=self.payload)
+        response = session.post("https://is.kofikofi.cz/", data=self.payload)
         if not (response.status_code == 200 and "Burza" in response.text):
             session.close()
-            return None  # login failed
+            return None, None
 
-        response = session.get(shift_url)
+        shifts_df = self._scrape_shifts_page(session)
+        flyboys_df = self._scrape_flyboys_page(session)
         session.close()
+        return shifts_df, flyboys_df
+
+    def _scrape_shifts_page(self, session):
+        response = session.get("https://is.kofikofi.cz/index.php?what=read2&truck=0")
         if response.status_code != 200:
-            return pd.DataFrame()  # page fetch failed
+            return pd.DataFrame()
 
         soup = BeautifulSoup(response.text, 'html.parser')
         results = []
@@ -263,18 +347,67 @@ class DiscordHandler:
                         })
         if not results:
             return pd.DataFrame()
-        
+
         df = pd.DataFrame(results)
         df['day_categorical'] = pd.Categorical(df['day'], categories=config.DAY_ORDER, ordered=True)
         df['truck_categorical'] = pd.Categorical(df['truck'], categories=config.TRUCK_ORDER, ordered=True)
         df['position_priority'] = df['position'].apply(self._get_position_priority)
         df['start_time_minutes'] = df['time'].apply(self._get_start_time)
-
-        df = df.sort_values(
+        return df.sort_values(
             ['day_categorical', 'truck_categorical', 'position_priority', 'start_time_minutes']
         ).reset_index(drop=True)
 
-        return df
+    def _scrape_flyboys_page(self, session):
+        response = session.get("https://is.kofikofi.cz/index.php?what=read2_fb")
+        if response.status_code != 200:
+            return pd.DataFrame()
+
+        soup = BeautifulSoup(response.content, 'html.parser')
+        results = []
+        for table in soup.find_all("table", class_="smeny_tab"):
+            headline = table.find("th", class_="headline")
+            if not headline:
+                continue
+            shift_type = headline.get_text(strip=True)
+            current_headers = []
+
+            for row in table.find_all("tr"):
+                ths = row.find_all("th")
+                tds = row.find_all("td")
+
+                # Header row: first th is empty, the rest are position descriptions
+                if len(ths) > 1 and ths[0].get_text(strip=True) == "":
+                    current_headers = [th.get_text(strip=True) for th in ths[1:]]
+                    continue
+
+                # Data row: single th with the day name
+                if len(ths) == 1 and tds:
+                    day = ths[0].get_text(strip=True)
+                    if not day:
+                        continue
+                    for i, td in enumerate(tds):
+                        for div in td.find_all("div", class_="neni_me"):
+                            a = div.find("a")
+                            if not a:
+                                continue
+                            name = a.get_text(strip=True)
+                            text = div.get_text(" ", strip=True)
+                            time_match = re.search(r"\((.*?)\)", text)
+                            time = time_match.group(1) if time_match else None
+                            position = current_headers[i] if i < len(current_headers) else "Unknown"
+                            results.append({
+                                "shift_type": shift_type,
+                                "day": day,
+                                "position": position,
+                                "name": name,
+                                "time": time,
+                            })
+        if not results:
+            return pd.DataFrame()
+
+        df = pd.DataFrame(results)
+        df['day_categorical'] = pd.Categorical(df['day'], categories=config.DAY_ORDER, ordered=True)
+        return df.sort_values(['day_categorical', 'shift_type']).reset_index(drop=True)
     
     # Helper function to assign position priority
     def _get_position_priority(self, position):
@@ -327,10 +460,15 @@ class DiscordHandler:
                 shifts = state["day_shifts"][state["day_shifts"]["truck"] == truck]
                 embed = self._create_embed(shifts, truck, state["czech_day"])
                 embed.set_footer(text=f"{truck}  •  {index + 1} / {len(items)}")
-            else:
+            elif mode == "days":
                 day = items[index]
                 shifts = state["truck_shifts"][state["truck_shifts"]["day"] == day]
                 embed = self._create_embed(shifts, state["truck"], day)
+                embed.set_footer(text=f"{day}  •  {index + 1} / {len(items)}")
+            else:  # flyboys_days
+                day = items[index]
+                day_flyboys = state["flyboys_shifts"][state["flyboys_shifts"]["day"] == day]
+                embed = self._create_flyboys_embed(day_flyboys, day)
                 embed.set_footer(text=f"{day}  •  {index + 1} / {len(items)}")
 
             channel = self.client.get_channel(payload.channel_id)
@@ -446,10 +584,11 @@ class DiscordHandler:
         """Called when the Discord bot is ready"""
         print(f'Logged in as {self.client.user}')
         print('Discord bot is ready!')
-        results = await asyncio.to_thread(self._do_scrape)
-        if results is not None and not results.empty:
-            self.shifts = results
-            print(f"Initial scrape completed. Got {len(results)} shift records.")
+        shifts, flyboys = await asyncio.to_thread(self._do_scrape)
+        if shifts is not None:
+            self.shifts = shifts
+            self.flyboys = flyboys
+            print(f"Initial scrape completed. Got {len(shifts)} shift records and {len(flyboys)} flyboys records.")
         else:
             print("Initial scrape failed or returned no data.")
 
